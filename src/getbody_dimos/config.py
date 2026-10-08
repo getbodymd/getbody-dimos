@@ -162,6 +162,9 @@ class Config:
     feeds: dict[str, Feed]
     stop: StopConfig
     odom: OdomConfig | None = None
+    # Regex with named groups x, y and heading, to pick the robot's pose out of a
+    # tool's text result (dimos's move_to reports "Robot is at x=.. y=.. heading=..deg").
+    pose_regex: str | None = None
 
     def tools_used(self) -> set[str]:
         tools = {c.tool for c in self.commands.values() if c.tool}
@@ -263,7 +266,15 @@ def parse(raw: dict) -> Config:
     if any(f.kind == "odom" for f in feeds.values()) and odom is None:
         raise ConfigError("an odom feed needs the odom section")
     cfg = Config(mcp_url=mcp.get("url", DEFAULT_URL), mcp_timeout_s=float(mcp.get("timeout_s", 4.0)),
-                 ack_after_s=float(raw.get("ack_after_s", 1.0)), commands=commands, feeds=feeds, stop=stop, odom=odom)
+                 ack_after_s=float(raw.get("ack_after_s", 1.0)), commands=commands, feeds=feeds, stop=stop, odom=odom,
+                 pose_regex=raw.get("pose_regex"))
+    if cfg.pose_regex is not None:
+        try:
+            missing = {"x", "y", "heading"} - set(re.compile(cfg.pose_regex).groupindex)
+        except re.error as exc:
+            raise ConfigError(f"pose_regex: {exc}") from exc
+        if missing:
+            raise ConfigError(f"pose_regex needs named groups {sorted(missing)}")
     if not 0 < cfg.mcp_timeout_s <= 4.5:
         raise ConfigError("mcp.timeout_s must be above 0 and at most 4.5 (GetBody drops replies after 5 s)")
     if not 0 < cfg.ack_after_s < cfg.mcp_timeout_s:
