@@ -14,9 +14,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Optional halt check: read odometry straight off the dimos bus.
-odom-zenoh = ["dimos-lcm>=0.1.4", "eclipse-zenoh>=1.0"]
-odom-lcm = ["dimos-lcm>=0.1.4", "lcm>=1.5"]
+# Optional halt check: read odometry straight off the dimos bus. Same versions dimos pins.
+# dimos-lcm brings lcm-dimos-fork (the `lcm` module); it has no Windows wheels.
+odom-zenoh = ["dimos-lcm>=0.1.4", "eclipse-zenoh>=1.10.1,<2"]
+odom-lcm = ["dimos-lcm>=0.1.4"]
 
 [project.scripts]
 getbody-dimos = "getbody_dimos.cli:main"

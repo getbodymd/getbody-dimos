@@ -113,3 +113,19 @@ def test_plan_and_schemas():
     assert schema["properties"]["x"] == {"type": "number", "minimum": -1.0, "maximum": 1.0, "default": 0.0}
     assert schema["additionalProperties"] is False
     assert c.tools_used() == {"move_to", "tag_location", "observe", "stop_navigation"}
+
+
+def test_odom_defaults_to_dimos_topics():
+    assert cfg(odom={"backend": "zenoh"}).odom.topic == "dimos/odom/geometry_msgs.PoseStamped"
+    assert cfg(odom={"backend": "lcm"}).odom.topic == "/odom#geometry_msgs.PoseStamped"
+
+
+@pytest.mark.parametrize("odom, message", [
+    ({"backend": "ros"}, "backend"),
+    ({"backend": "zenoh", "max_sped": 1}, "unknown settings"),
+    ({"backend": "zenoh", "max_speed": 0}, "positive"),
+    ({"backend": "zenoh", "timeout_s": 20}, "at most 6"),
+])
+def test_bad_odom_settings(odom, message):
+    with pytest.raises(ConfigError, match=message):
+        cfg(odom=odom)

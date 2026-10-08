@@ -34,7 +34,7 @@ class Param:
     type: str
     min: float | None = None
     max: float | None = None
-    enum: list | None = None
+    enum: list[Any] | None = None
     max_length: int | None = None
     pattern: str | None = None
     required: bool = False
@@ -69,7 +69,7 @@ class Param:
             raise ParamError(f"{n} must be one of {self.enum}")
         return value
 
-    def schema(self) -> dict:
+    def schema(self) -> dict[str, Any]:
         """JSON Schema for GetBody's command_schemas."""
         s: dict[str, Any] = {"type": self.type}
         if self.min is not None:
@@ -99,7 +99,7 @@ class Command:
     fault_patterns: list[str] = field(default_factory=list)
     example: dict[str, Any] = field(default_factory=dict)
 
-    def arguments(self, params: dict) -> dict:
+    def arguments(self, params: dict[str, Any]) -> dict[str, Any]:
         """Check a renter's params against the limits; return the tool arguments.
         Raises ParamError for anything unknown, missing or out of range."""
         if not isinstance(params, dict):
@@ -118,7 +118,7 @@ class Command:
         args.update(self.fixed)  # never overridable by the renter
         return args
 
-    def schema(self) -> dict:
+    def schema(self) -> dict[str, Any]:
         props = {name: p.schema() for name, p in self.params.items()}
         required = [name for name, p in self.params.items() if p.required]
         out: dict[str, Any] = {"type": "object", "properties": props, "additionalProperties": False}
@@ -142,15 +142,22 @@ class StopConfig:
     timeout_s: float = 2.0
 
 
+# The odometry channel dimos uses for GO2Connection.odom (see motion.py).
+DIMOS_ODOM_TOPICS = {"zenoh": "dimos/odom/geometry_msgs.PoseStamped", "lcm": "/odom#geometry_msgs.PoseStamped"}
+
+
 @dataclass
 class OdomConfig:
-    backend: str                # "zenoh" or "lcm"
-    topic: str
+    backend: str                # "zenoh" (dimos's default transport) or "lcm"
+    topic: str = ""             # empty: dimos's odom channel for the backend
     max_speed: float = 0.05     # m/s; at or below this counts as stopped
     max_yaw_rate: float = 0.1   # rad/s
     window_s: float = 0.5       # measure speed over this long
     timeout_s: float = 3.0      # give up waiting for a stop after this long
     stale_s: float = 1.0        # odom older than this is not trusted
+    zenoh_connect: list[str] = field(default_factory=list)       # e.g. ["tcp/127.0.0.1:7447"]
+    zenoh_config: dict[str, Any] = field(default_factory=dict)   # extra zenoh settings, key -> value
+    lcm_url: str | None = None  # default: $LCM_DEFAULT_URL, else dimos's udpm://239.255.76.67:7667?ttl=0
 
 
 @dataclass
@@ -171,7 +178,7 @@ class Config:
         tools |= {f.tool for f in self.feeds.values() if f.tool}
         return tools | set(self.stop.required)
 
-    def plan(self) -> dict:
+    def plan(self) -> dict[str, Any]:
         """plan.json for GetBody's stand-in: every command (with its example
         params) and every feed."""
         return {
@@ -179,12 +186,12 @@ class Config:
             "feeds": list(self.feeds),
         }
 
-    def schemas(self) -> dict:
+    def schemas(self) -> dict[str, Any]:
         """command_schemas for the GetBody listing."""
         return {name: c.schema() for name, c in self.commands.items()}
 
 
-def _param(command: str, name: str, raw: dict) -> Param:
+def _param(command: str, name: str, raw: dict[str, Any]) -> Param:
     label = f"{command}.{name}"
     if not isinstance(raw, dict) or raw.get("type") not in PARAM_TYPES:
         raise ConfigError(f"param {label}: type must be one of {PARAM_TYPES}")
@@ -203,7 +210,7 @@ def _param(command: str, name: str, raw: dict) -> Param:
     return p
 
 
-def _command(name: str, raw: dict) -> Command:
+def _command(name: str, raw: dict[str, Any]) -> Command:
     raw = raw or {}
     builtin = raw.get("builtin")
     if builtin not in (None, "stop"):
@@ -231,7 +238,7 @@ def _command(name: str, raw: dict) -> Command:
     return cmd
 
 
-def _feed(name: str, raw: dict) -> Feed:
+def _feed(name: str, raw: dict[str, Any]) -> Feed:
     raw = raw or {}
     kind = raw.get("kind")
     if kind not in FEED_KINDS:
@@ -244,7 +251,7 @@ def _feed(name: str, raw: dict) -> Feed:
     return Feed(name=name, kind=kind, tool=tool, max_bytes=raw.get("max_bytes"))
 
 
-def parse(raw: dict) -> Config:
+def parse(raw: dict[str, Any]) -> Config:
     if not isinstance(raw, dict):
         raise ConfigError("config must be a mapping")
     mcp = raw.get("mcp") or {}
@@ -259,10 +266,20 @@ def parse(raw: dict) -> Config:
         raise ConfigError("stop.required must be a subset of stop.tools")
     odom = None
     if raw.get("odom"):
-        o = raw["odom"]
-        if o.get("backend") not in ("zenoh", "lcm") or not o.get("topic"):
-            raise ConfigError("odom needs backend (zenoh or lcm) and topic")
-        odom = OdomConfig(**{k: v for k, v in o.items()})
+        o = dict(raw["odom"])
+        if o.get("backend") not in DIMOS_ODOM_TOPICS:
+            raise ConfigError(f"odom.backend must be one of {sorted(DIMOS_ODOM_TOPICS)}")
+        unknown = sorted(set(o) - set(OdomConfig.__dataclass_fields__))
+        if unknown:
+            raise ConfigError(f"odom: unknown settings {unknown}")
+        odom = OdomConfig(**o)
+        odom.topic = odom.topic or DIMOS_ODOM_TOPICS[odom.backend]
+        for name in ("max_speed", "max_yaw_rate", "window_s", "timeout_s", "stale_s"):
+            value = getattr(odom, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0:
+                raise ConfigError(f"odom.{name} must be a positive number")
+        if odom.timeout_s > 6:
+            raise ConfigError("odom.timeout_s must be at most 6 (GetBody alerts operators after 10 s without kill_ack)")
     if any(f.kind == "odom" for f in feeds.values()) and odom is None:
         raise ConfigError("an odom feed needs the odom section")
     cfg = Config(mcp_url=mcp.get("url", DEFAULT_URL), mcp_timeout_s=float(mcp.get("timeout_s", 4.0)),
