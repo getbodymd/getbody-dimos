@@ -10,5 +10,6 @@ does not include DimOS source code. DimOS is licensed under the Apache License
 2.0 by Dimensional Inc.: https://github.com/dimensionalOS/dimos
 
 src/getbody_dimos/vendor/getbody_bridge.py is a pinned copy of GetBody's
-ready-made control bridge; see src/getbody_dimos/vendor/README.md for its
-source and license.
+ready-made control bridge, under the MIT License
+(src/getbody_dimos/vendor/LICENSE). Its source and checksum are in
+src/getbody_dimos/vendor/README.md.
