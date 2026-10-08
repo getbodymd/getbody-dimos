@@ -213,8 +213,9 @@ def derive(dimos_root: Path) -> dict:
     dimos_version = next(line.split('"')[1] for line in pyproject.splitlines() if line.startswith("version ="))
     return {
         "dimos": {"repo": "https://github.com/dimensionalOS/dimos", "commit": commit, "version": dimos_version},
-        "derived_with": {"python": platform.python_version(), "langchain_core": version("langchain-core"),
-                         "pydantic": version("pydantic")},
+        # Python as major.minor only, so CI re-deriving on another patch release matches.
+        "derived_with": {"python": ".".join(platform.python_version_tuple()[:2]),
+                         "langchain_core": version("langchain-core"), "pydantic": version("pydantic")},
         "blueprint": "getbody-dimos.unitree-go2-mcp",
         "modules": modules,
         # McpServer._handle_initialize
