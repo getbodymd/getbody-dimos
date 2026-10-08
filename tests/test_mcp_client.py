@@ -7,7 +7,7 @@ from .fake_dimos import JPEG, FakeDimos
 
 @pytest.fixture
 def dimos():
-    with FakeDimos(move_duration_s=0.2) as fake:
+    with FakeDimos(move_duration_s=0.2, start_delay_s=0.0, settle_s=0.1) as fake:
         yield fake
 
 

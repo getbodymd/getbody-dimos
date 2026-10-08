@@ -27,9 +27,9 @@ def free_port():
 
 
 def test_standin_checklist_passes():
-    with FakeDimos(move_duration_s=1.5) as dimos:
+    with FakeDimos(move_duration_s=1.5, start_delay_s=0.0, settle_s=0.3) as dimos:
         cfg = load(CONFIG)
-        robot = DimosRobot(cfg, McpClient(dimos.url, timeout_s=cfg.mcp_timeout_s), log=lambda *_: None)
+        robot = DimosRobot(cfg, McpClient(dimos.url, timeout_s=cfg.mcp_timeout_s))
         robot.check()
         port = free_port()
         bridge = DimosBridge(robot, f"ws://127.0.0.1:{port}", log=lambda *_: None)
@@ -54,10 +54,10 @@ def test_standin_checklist_passes():
                 return '"status": "fault"' not in question
             if "stop at once" in question:
                 time.sleep(0.3)
-                return not dimos.moving.is_set()
+                return not dimos.is_moving()
             if "stay still" in question:
                 time.sleep(0.3)
-                ok = not dimos.moving.is_set() and dimos.count("move_to") == moves_before["n"] + 1
+                ok = not dimos.is_moving() and dimos.count("move_to") == moves_before["n"] + 1
                 bridge.request_rearm()   # the human types `rearm`
                 return ok
             raise AssertionError(f"unexpected question: {question}")

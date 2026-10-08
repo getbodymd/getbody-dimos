@@ -23,7 +23,7 @@ def test_schemas(capsys):
 def test_check_against_fake_dimos(capsys):
     with FakeDimos() as dimos:
         assert main(["check", "--config", CONFIG, "--mcp-url", dimos.url]) == 0
-    assert "stop tools ['stop_navigation', 'end_exploration']" in capsys.readouterr().out
+    assert "stop tools: stop_navigation, end_exploration, stop_patrol" in capsys.readouterr().out
 
 
 def test_check_fails_when_dimos_is_down(capsys):

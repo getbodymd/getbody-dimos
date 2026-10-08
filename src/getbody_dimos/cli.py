@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import sys
 import threading
 
@@ -20,8 +21,10 @@ from .config import ConfigError, load
 from .robot import DimosRobot, StartupError
 from .vendor import getbody_bridge as gb
 
+log = logging.getLogger("getbody_dimos")
 
-def _robot(args) -> DimosRobot:
+
+def _robot(args: argparse.Namespace) -> DimosRobot:
     cfg = load(args.config)
     if args.mcp_url:
         cfg.mcp_url = args.mcp_url
@@ -31,13 +34,15 @@ def _robot(args) -> DimosRobot:
 
         motion = make_probe(cfg.odom)
     robot = DimosRobot(cfg, motion=motion)
-    tools = robot.check()
-    print(f"dimos at {cfg.mcp_url}: {len(tools)} tools; stop tools {robot.stop_tools}"
-          + ("; odometry check on" if motion else "; odometry check off (halted is not measured)"))
+    robot.check()
+    if motion:
+        log.info("odometry check on: kill_ack.halted is measured from %s", cfg.odom.topic if cfg.odom else "?")
+    else:
+        log.warning("odometry check off: kill_ack.halted means the stop tools returned ok, not measured motion")
     return robot
 
 
-def cmd_check(args) -> int:
+def cmd_check(args: argparse.Namespace) -> int:
     robot = _robot(args)
     cfg = robot.config
     for name, c in cfg.commands.items():
@@ -45,11 +50,12 @@ def cmd_check(args) -> int:
         print(f"command {name:16} -> {target}")
     for name, f in cfg.feeds.items():
         print(f"feed    {name:16} -> {f.tool or f.kind}")
+    print(f"stop tools: {', '.join(robot.stop_tools)}")
     print("ok")
     return 0
 
 
-def cmd_plan(args) -> int:
+def cmd_plan(args: argparse.Namespace) -> int:
     plan = json.dumps(load(args.config).plan(), indent=2)
     if args.output:
         with open(args.output, "w", encoding="utf-8", newline="\n") as f:
@@ -60,20 +66,20 @@ def cmd_plan(args) -> int:
     return 0
 
 
-def cmd_schemas(args) -> int:
+def cmd_schemas(args: argparse.Namespace) -> int:
     cfg = load(args.config)
     print(json.dumps({"command_schemas": cfg.schemas(), "offered_feeds": list(cfg.feeds)}, indent=2))
     return 0
 
 
-def cmd_standin(args) -> int:
+def cmd_standin(args: argparse.Namespace) -> int:
     with open(args.plan, encoding="utf-8") as f:
         plan = json.load(f)
     asyncio.run(gb.StandIn(plan).serve(port=args.port))
     return 0
 
 
-def cmd_run(args) -> int:
+def cmd_run(args: argparse.Namespace) -> int:
     robot = _robot(args)
     if args.url:
         url, path, key = args.url, "", (gb.AgentKey.load(args.key) if args.key else None)
@@ -83,9 +89,10 @@ def cmd_run(args) -> int:
             return 2
         path = f"/getbody/ws/bodies/{args.body_id}/interface"
         url, key = f"wss://{args.host}{path}", gb.AgentKey.load(args.key)
-    bridge = DimosBridge(robot, url, key=key, path=path, state_file=args.state)
+    bridge_log = logging.getLogger("getbody_dimos.bridge")
+    bridge = DimosBridge(robot, url, key=key, path=path, state_file=args.state, log=bridge_log.warning)
     threading.Thread(target=gb._stdin_rearm, args=(bridge,), daemon=True).start()
-    print(f"bridge connecting to {url}; type `rearm` here after a kill, once the robot is safe")
+    log.info("bridge connecting to %s; type `rearm` here after a kill, once the robot is safe", url)
     try:
         asyncio.run(bridge.run_forever())
     except KeyboardInterrupt:
@@ -93,12 +100,13 @@ def cmd_run(args) -> int:
     return 0
 
 
-def main(argv=None) -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="getbody-dimos", description="List a DimOS robot on GetBody (unofficial).")
     p.add_argument("--version", action="version", version=f"getbody-dimos {__version__} (bridge {gb.__version__})")
+    p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     sub = p.add_subparsers(dest="mode", required=True)
 
-    def with_config(sp, dimos=True):
+    def with_config(sp: argparse.ArgumentParser, dimos: bool = True) -> None:
         sp.add_argument("--config", required=True, help="config.yaml")
         if dimos:
             sp.add_argument("--mcp-url", help="dimos MCP endpoint (overrides the config)")
@@ -120,6 +128,8 @@ def main(argv=None) -> int:
     sp.add_argument("--host", default="getbody.md")
     sp.add_argument("--state", default="getbody_bridge_state.json")
     args = p.parse_args(argv)
+    logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+                        stream=sys.stderr, force=True)
 
     handlers = {"check": cmd_check, "plan": cmd_plan, "schemas": cmd_schemas, "standin": cmd_standin, "run": cmd_run}
     try:

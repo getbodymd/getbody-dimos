@@ -59,10 +59,12 @@ feeds:
   # odom: {kind: odom}                               # needs the odom section below
 
 stop:
-  # Called together on a kill or a renter stop. Tools this blueprint doesn't
-  # offer are skipped. halted is reported true only if every required one
-  # returns ok (or, with odom on, only once the robot is measured still).
-  tools: [stop_navigation, end_exploration, stop_patrol, stop_following]
+  # Called together on a kill or a renter stop: every tool in this blueprint
+  # that ends motion (move_to and navigation goals, exploration, patrol). If
+  # you add PersonFollowSkillContainer, add stop_following. halted is true
+  # only if every required one returns ok (or, with odom on, only once the
+  # robot is measured still).
+  tools: [stop_navigation, end_exploration, stop_patrol]
   required: [stop_navigation]
   timeout_s: 2.0
 
