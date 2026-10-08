@@ -52,7 +52,7 @@ def cmd_check(args) -> int:
 def cmd_plan(args) -> int:
     plan = json.dumps(load(args.config).plan(), indent=2)
     if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
+        with open(args.output, "w", encoding="utf-8", newline="\n") as f:
             f.write(plan + "\n")
         print(f"wrote {args.output}")
     else:
