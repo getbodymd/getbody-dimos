@@ -1,0 +1,78 @@
+# getbody-dimos config for a Unitree Go2 run by dimos.
+#
+# Start dimos with the MCP-only blueprint from this package (no LLM agent and no
+# web chat input, so the renter is the only one driving the robot):
+#
+#   dimos --simulation run getbody-dimos.unitree-go2-mcp
+#
+# Only what is listed here is offered to renters. Every other dimos tool
+# (flips, follow_person, patrol, speak, agent_send, ...) stays unreachable.
+
+mcp:
+  url: http://127.0.0.1:9990/mcp
+  timeout_s: 4.0          # per call; GetBody drops replies after 5 s
+
+# Background commands reply "started" if they haven't finished after this long.
+ack_after_s: 1.0
+
+# move_to ends with "Robot is at x=.. y=.. heading=..deg"; the task feed reports it.
+pose_regex: 'Robot is at x=(?P<x>-?[\d.]+) y=(?P<y>-?[\d.]+) heading=(?P<heading>-?[\d.]+)deg'
+
+commands:
+  move:
+    # Walk to a point relative to where the robot stands. Blocks in dimos until
+    # it arrives, so it runs in the background; see the task feed.
+    tool: move_to
+    mode: background
+    max_runtime_s: 30     # the bridge stops the robot if it is still going after this
+    fixed: {relative: true}
+    params:
+      x: {type: number, min: -1.0, max: 1.0, default: 0.0}   # metres forward (+) / back (-)
+      y: {type: number, min: -1.0, max: 1.0, default: 0.0}   # metres left (+) / right (-)
+    fault_patterns: ["cancelled or failed", "timed out", "Failed to get the position"]
+    example: {x: 0.3}
+
+  turn:
+    tool: move_to
+    mode: background
+    max_runtime_s: 20
+    fixed: {relative: true, x: 0.0, y: 0.0}
+    params:
+      degrees: {type: number, min: -90, max: 90, required: true}   # left (+) / right (-)
+    fault_patterns: ["cancelled or failed", "timed out", "Failed to get the position"]
+    example: {degrees: 45}
+
+  stop:
+    # Calls every stop tool below; cancels a running move or turn. Not a kill.
+    builtin: stop
+
+  tag_location:
+    tool: tag_location
+    params:
+      location_name: {type: string, required: true, max_length: 40, pattern: '[A-Za-z0-9 _-]+'}
+    example: {location_name: start}
+
+feeds:
+  camera: {kind: image, tool: observe, max_bytes: 2000000}   # base64 JPEG from the front camera
+  task: {kind: task}       # the last move/turn: running, done, failed, stopped, ... and the last pose
+  # battery: {kind: number, tool: get_battery_soc}   # real Go2 only; always empty in MuJoCo
+  # odom: {kind: odom}                               # needs the odom section below
+
+stop:
+  # Called together on a kill or a renter stop. Tools this blueprint doesn't
+  # offer are skipped. halted is reported true only if every required one
+  # returns ok (or, with odom on, only once the robot is measured still).
+  tools: [stop_navigation, end_exploration, stop_patrol, stop_following]
+  required: [stop_navigation]
+  timeout_s: 2.0
+
+# Optional measured halt (pip install 'getbody-dimos[odom-zenoh]').
+# odom:
+#   backend: zenoh                               # dimos's default transport
+#   topic: dimos/odom/geometry_msgs.PoseStamped  # with DIMOS_TRANSPORT=lcm: backend lcm,
+#                                                #   topic /odom#geometry_msgs.PoseStamped
+#   max_speed: 0.05       # m/s
+#   max_yaw_rate: 0.1     # rad/s
+#   window_s: 0.5
+#   timeout_s: 3.0
+#   stale_s: 1.0

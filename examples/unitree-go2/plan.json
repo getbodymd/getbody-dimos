@@ -1,0 +1,30 @@
+{
+  "commands": [
+    {
+      "action": "move",
+      "params": {
+        "x": 0.3
+      }
+    },
+    {
+      "action": "turn",
+      "params": {
+        "degrees": 45
+      }
+    },
+    {
+      "action": "stop",
+      "params": {}
+    },
+    {
+      "action": "tag_location",
+      "params": {
+        "location_name": "start"
+      }
+    }
+  ],
+  "feeds": [
+    "camera",
+    "task"
+  ]
+}
