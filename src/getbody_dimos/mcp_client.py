@@ -60,7 +60,7 @@ def parse_content(result: dict[str, Any]) -> ToolResult:
 class McpClient:
     """Thread-safe: the bridge calls tools from several threads at once."""
 
-    def __init__(self, url: str = DEFAULT_URL, timeout_s: float = 4.0, transport=None):
+    def __init__(self, url: str = DEFAULT_URL, timeout_s: float = 4.0, transport: httpx.BaseTransport | None = None):
         self.url = url
         self.timeout_s = timeout_s
         self._http = httpx.Client(timeout=timeout_s, transport=transport)
@@ -70,7 +70,7 @@ class McpClient:
     def close(self) -> None:
         self._http.close()
 
-    def _request(self, method: str, params: dict | None = None, timeout_s: float | None = None) -> Any:
+    def _request(self, method: str, params: dict[str, Any] | None = None, timeout_s: float | None = None) -> Any:
         with self._ids_lock:
             req_id = next(self._ids)
         body = {"jsonrpc": "2.0", "id": req_id, "method": method, "params": params or {}}
@@ -91,7 +91,7 @@ class McpClient:
             raise McpError(f"{method}: {err.get('message', err)}")
         return msg.get("result")
 
-    def initialize(self) -> dict:
+    def initialize(self) -> dict[str, Any]:
         result = self._request("initialize", {
             "protocolVersion": "2025-06-18",
             "capabilities": {},
@@ -104,11 +104,11 @@ class McpClient:
             pass
         return result or {}
 
-    def list_tools(self) -> dict[str, dict]:
+    def list_tools(self) -> dict[str, dict[str, Any]]:
         """Tool name -> {"inputSchema", "description", "_meta"}."""
         result = self._request("tools/list") or {}
         return {t["name"]: t for t in result.get("tools", [])}
 
-    def call_tool(self, name: str, arguments: dict | None = None, timeout_s: float | None = None) -> ToolResult:
+    def call_tool(self, name: str, arguments: dict[str, Any] | None = None, timeout_s: float | None = None) -> ToolResult:
         result = self._request("tools/call", {"name": name, "arguments": arguments or {}}, timeout_s)
         return parse_content(result or {})

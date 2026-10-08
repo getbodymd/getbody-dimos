@@ -28,7 +28,7 @@ getbody-dimos = "getbody_dimos.cli:main"
 unitree-go2-mcp = "getbody_dimos.blueprints.unitree_go2:unitree_go2_mcp"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["mypy>=1.11", "pytest>=8", "ruff>=0.6", "types-pyyaml>=6"]
 
 [build-system]
 requires = ["hatchling>=1.26"]
@@ -43,7 +43,21 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 125
 target-version = "py310"
-extend-exclude = ["src/getbody_dimos/vendor"]
+extend-exclude = ["src/getbody_dimos/vendor", "dimos"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src/getbody_dimos"]
+exclude = ['src/getbody_dimos/vendor/getbody_bridge\.py$', 'src/getbody_dimos/blueprints/']
+strict = true
+warn_unreachable = true
+
+# The vendored GetBody bridge is typed by vendor/getbody_bridge.pyi.
+# dimos, zenoh, lcm and dimos-lcm are optional and untyped.
+[[tool.mypy.overrides]]
+module = ["zenoh", "lcm", "dimos_lcm.*", "dimos.*", "langchain_core.*"]
+ignore_missing_imports = true
+follow_imports = "skip"

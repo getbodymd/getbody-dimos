@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.10", "3.11", "3.12"]
+        include:
+          # lcm-dimos-fork (pulled in by dimos-lcm) has no Windows wheels, so the
+          # odometry extras and their test are Linux-only.
+          - os: windows-latest
+            python: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then uv sync --locked --extra odom-zenoh; else uv sync --locked; fi
+      - name: Lint
+        run: uv run ruff check src tests tools
+      - name: Type check
+        run: uv run mypy
+      - name: Tests
+        run: uv run pytest -v -ra
+
+  dimos-contract:
+    # Re-derive the dimos contract and re-check the blueprint from the pinned
+    # dimos source, and fail if either no longer matches what is committed.
+    runs-on: ubuntu-latest
+    env:
+      DIMOS_COMMIT: dc80d89b89558e9ef3bcccc7949b20aa3e2b4d3b
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Fetch dimos source at the pinned commit
+        run: |
+          git init -q dimos && cd dimos
+          git remote add origin https://github.com/dimensionalOS/dimos.git
+          git fetch -q --depth 1 origin "$DIMOS_COMMIT"
+          git checkout -q FETCH_HEAD
+      - name: Re-derive the contract
+        run: |
+          uv run --no-project -p 3.12 --with langchain-core==1.3.3 --with pydantic==2.12.5 \
+            python -I tools/derive_contract.py dimos "tests/contract/dimos-${DIMOS_COMMIT::7}.json"
+          git diff --exit-code tests/contract
+      - name: Check the blueprint against dimos
+        run: uv run --no-project -p 3.12 python -I tools/check_blueprint.py dimos
