@@ -40,7 +40,7 @@ packages = ["src/getbody_dimos"]
 testpaths = ["tests"]
 
 [tool.ruff]
-line-length = 110
+line-length = 125
 target-version = "py310"
 extend-exclude = ["src/getbody_dimos/vendor"]
 
